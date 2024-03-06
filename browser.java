@@ -10,8 +10,10 @@ import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 import javafx.stage.Stage;
 
-import java.net.URI;
-import java.net.URISyntaxException;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class HelloApplication extends Application {
 
@@ -34,12 +36,8 @@ public class HelloApplication extends Application {
             }
         });
 
-        Button forwardButton = new Button("Forward");
-        forwardButton.setOnAction(e -> {
-            if (webEngine.getHistory().getCurrentIndex() < webEngine.getHistory().getEntries().size() - 1) {
-                webEngine.getHistory().go(1);
-            }
-        });
+        Button forwardButton = new Button("Send GET Request");
+        forwardButton.setOnAction(e -> sendGETRequest(webEngine, addressBar.getText()));
 
         Button reloadButton = new Button("Reload");
         reloadButton.setOnAction(e -> loadURL(webEngine, webEngine.getLocation())); // Reload the current page
@@ -60,9 +58,6 @@ public class HelloApplication extends Application {
         webEngine.getLoadWorker().stateProperty().addListener((observable, oldValue, newValue) -> {
             if (newValue == Worker.State.SUCCEEDED) {
                 addressBar.setText(webEngine.getLocation());
-            } else if (newValue == Worker.State.FAILED) {
-                // Display an error page when the webpage cannot be loaded
-                webEngine.loadContent("<h1>Error: Page Unreachable</h1>");
             }
         });
     }
@@ -71,18 +66,36 @@ public class HelloApplication extends Application {
         String url = input.trim();
 
         try {
-            URI uri = new URI(url);
-
-            // Check if it's a valid URL or IP address with port
-            if (uri.getHost() == null && uri.getPort() == -1) {
-                // If it's not a valid URL, assume it's an IP address with port
-                url = "http://" + url;
-            }
-        } catch (URISyntaxException e) {
-            // If there's an exception, assume it's not a valid URL and treat it as an IP address with port
-            url = "http://" + url;
+            // Check if it's a valid URL
+            new URL(url).toURI();
+            webEngine.load(url);
+        } catch (Exception e) {
+            // If the URL creation fails, treat it as an invalid URL and load "Page Unreachable" content
+            webEngine.loadContent("<h1>Error: Page Unreachable</h1>");
         }
+    }
 
-        webEngine.load(url);
+    private void sendGETRequest(WebEngine webEngine, String url) {
+        try {
+            HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+            connection.setRequestMethod("GET");
+
+            int responseCode = connection.getResponseCode();
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(connection.getInputStream()))) {
+                    StringBuilder response = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        response.append(line);
+                    }
+                    webEngine.loadContent(response.toString());
+                }
+            } else {
+                webEngine.loadContent("<h1>Error: HTTP " + responseCode + "</h1>");
+            }
+        } catch (Exception e) {
+            // If an exception occurs during the request, load "Page Unreachable" content
+            webEngine.loadContent("<h1>Error: Page Unreachable</h1>");
+        }
     }
 }
